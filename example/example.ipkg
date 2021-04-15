@@ -7,4 +7,4 @@ modules = Control.Comonad,
 main = Main
 executable = sdl_example
 
-opts = "-p contrib -p sdl"
+opts = "-p contrib"

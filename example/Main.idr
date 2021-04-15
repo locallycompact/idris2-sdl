@@ -8,9 +8,11 @@ import System.Clock
 import System.FFI
 import System.Random
 
+import System
 import SDL
 import SDL.Foreign
 
+import Data.SortedMap
 import GameOfLife
 
 -- Press n to compute the next step in the game
@@ -79,78 +81,55 @@ drawBoard scale ((col, row, Alive) :: cs) s = do
                           pure1 s
   drawBoard scale cs s
 
-drawGame : (LinearIO io, Ref Life LifeState)
+data TxtM : Type where
+
+K : Type
+K = Ref TxtM (SortedMap String (SDLTexture, SDLRect))
+
+lookupTexture : (HasIO io, K) => String -> io (Maybe (SDLTexture, SDLRect))
+lookupTexture x = do
+  k <- get TxtM
+  pure (lookup x k)
+
+f : LinearIO io => Maybe (SDLTexture, SDLRect) -> (1 _ : SDL WithRenderer) -> L {use = 1} io (SDLErrorPath WithRenderer WithRenderer)
+f (Just (a, l)) s = copySurface a l l s
+f Nothing s = ?p
+
+withSimpleImage : (LinearIO io, K) => String -> String -> SDLRect -> ((1 _ : SDL WithRenderer) -> L { use = 1} io (SDLErrorPath WithRenderer WithRenderer)) -> (1 _ : SDL WithRenderer) -> L { use = 1 }  io (SDLErrorPath WithRenderer WithRenderer)
+withSimpleImage f x r a s = withImage f (\(Texture h) => \s => do
+                             modify TxtM (insert x (Texture h, r))
+                             a s) s
+
+withImageLookup : (LinearIO m, K) => String -> ((SDLTexture, SDLRect) -> m a) -> m a
+withImageLookup x f = do
+  b < get TxtM
+  let x = lookup x b
+  f x
+
+drawGame : (LinearIO io, K)
         => (1 _ : SDL WithRenderer)
         -> L {use = 1} io (SDL WithRenderer)
-drawGame s = do
-  Success s <- setColor black s
+drawGame x = do
+  Success s <- withSimpleImage "logo.png" "foo" (MkRect 0 0 100 100) (\s => do
+                 b <- get TxtM
+                 let x = lookup "foo" b
+                 f x s
+                ) x
     | Failure s err => do putError err
                           pure1 s
-  Success s <- clear s
-    | Failure s err => do putError err
-                          pure1 s
-  Success s <- setColor red s
-    | Failure s err => do putError err
-                          pure1 s
-  st <- get Life
-  let board = gameSquare st.game
-  drawBoard st.scale board s
+  pure1 s
 
-onKeyEvent : (LinearIO io, Ref Life LifeState) => (event : SDLKeyboardEvent) -> L io ()
-onKeyEvent evt = case evt.keycode of
-  KeyR => do
-    rnd <- liftIO $ randomGame {radius = 14}
-    modify Life (record { game = rnd, isPlaying = False })
-  KeyS => modify Life (record { isPlaying $= not })
-  KeyN => do
-    st <- get Life
-    when (not st.isPlaying) $
-       modify Life (record { game $= nextStep })
-  Minus => do
-    st <- get Life
-    putStrLn $ "=> Updated frequency to \{show (st.frequency + 1)}"
-    modify Life (record { frequency $= S })
-  Plus => do
-    st <- get Life
-    let newFreq = max 1 (st.frequency `minus` 1)
-    putStrLn $ "=> Updated frequency to \{show newFreq}"
-    modify Life (record { frequency = newFreq })
-  Right => modify Life (record { game $= rightShift })
-  Left => modify Life (record { game $= leftShift })
-  Down => modify Life (record { game $= downShift })
-  Up => modify Life (record { game $= upShift })
-  _ => pure ()
-
-eventLoop : (LinearIO io, Ref Life LifeState)
+eventLoop : (LinearIO io, K)
          => (1 _ : SDL WithRenderer)
          -> L {use = 1} io (SDL WithRenderer)
 eventLoop s = do
-    st <- get Life
     now <- liftIO $ clockTime Monotonic
-    let delta = timeDifference now st.lastTick
-    if nanoseconds delta < 16000
-       then eventLoop s
-       else do
-         modify Life (record { lastTick = now, elapsedTicks $= S })
-         when (st.isPlaying && st.elapsedTicks >= st.frequency) $ do
-           let (n, avg) = st.averageUpdateTime
-           let avg' = ((nanoseconds now) + n * avg) `div` (n + 1)
-           putStrLn $ "INFO: Average time " ++ show (avg' `div` 1000000) ++ " ms"
-           modify Life (record { game $= nextStep, elapsedTicks = 0, averageUpdateTime = (n + 1, avg') })
-         evt <- pollEvent
-         handleEvent s evt
-  where
-    handleEvent : (1 _ : SDL WithRenderer) -> Maybe (t ** RawEventStruct t) -> L {use = 1} io (SDL WithRenderer)
-    handleEvent s (Just (SDLQuit ** ())) = pure1 s
-    handleEvent s (Just (SDLKeyUp ** evt)) = do
-      onKeyEvent evt
-      s <- drawGame s
-      s <- render s
-      eventLoop s
-    handleEvent s _ = do
-      s <- drawGame s
-      s <- render s
-      eventLoop s
+    usleep 100000
+    evt <- pollEvent
+    s <- drawGame s
+    s <- render s
+    eventLoop s
+
 
 defaultWindowOpts : SDLWindowOptions
 defaultWindowOpts =
@@ -162,13 +141,11 @@ defaultWindowOpts =
                      , flags = []
                      }
 
-win : (LinearIO io, Ref Life LifeState) => L io ()
+win : (LinearIO io, K) => L io ()
 win = initSDL [SDLInitVideo] (\err => putStrLn "Fatal error: \{show err}") $ \s => do
   putStrLn "=> SDL Inited"
 
-  st <- get Life
-  let size : Int = cast $ st.scale * (2 * (st.radius + 1) + 1)
-  let winops : SDLWindowOptions = record { width = size, height = size } defaultWindowOpts
+  let winops : SDLWindowOptions = record { flags = [SDLWindowMaximized] } defaultWindowOpts
   Success s <- newWindow winops s
     | Failure s err => handleInitedError s (putError err)
   putStrLn "=> Window created"
@@ -192,5 +169,5 @@ main : IO ()
 main = do
   clock <- clockTime Monotonic
   rnd <- randomGame {radius = 14} -- total dim is (14 + 1) * 2 + 1
-  run $ do ref <- newRef Life (MkLifeState rnd 10 25 0 clock False (0, 0))
+  run $ do ref <- newRef TxtM empty
            win

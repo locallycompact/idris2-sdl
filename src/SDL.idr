@@ -14,7 +14,7 @@ data SDLState : Type where
   WithWindow : SDLState
   WithRenderer : SDLState
 
-export
+public export
 data SDL : SDLState -> Type where
   Initial : SDL Inited
   Windowed : SDLWindow -> SDL WithWindow
