@@ -185,6 +185,17 @@ renderCopy (Renderer rnd) (Texture txt) src dst = do
                                               dst.x dst.y dst.width dst.height
   checkZeroRet ret
 
+%foreign libsdl "sdl_open_font"
+prim__sdlOpenFont : String -> Int -> PrimIO AnyPtr
+
+export
+openFont : HasIO io => String -> Int -> io (Either SDLError SDLFont)
+openFont str pt = do
+      ptr <- primIO $ prim__sdlOpenFont str pt
+      Right () <- checkRetPtr ptr
+        | Left err => pure $ Left err
+      pure $ Right (Font ptr)
+
 %foreign libsdl "sdl_poll_event"
 prim__sdlPollEvent : PrimIO AnyPtr
 

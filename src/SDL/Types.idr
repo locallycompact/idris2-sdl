@@ -123,6 +123,10 @@ data SDLRenderer : Type where
   Renderer : AnyPtr -> SDLRenderer
 
 public export
+data SDLFont : Type where
+  Font : AnyPtr -> SDLFont
+
+public export
 data SDLRendererFlags : Type where
   SDLRendererSoftware : SDLRendererFlags
   SDLRendererAccelerated : SDLRendererFlags
