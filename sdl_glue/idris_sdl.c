@@ -160,11 +160,6 @@ void* sdl_img_load(const char* path) {
     return (void*) surface;
 }
 
-void* sdl_open_font(const char* path, int ps) {
-    TTF_Font* font = TTF_OpenFont(path, ps);
-    return (void*) font;
-}
-
 void* sdl_create_texture_from_surface(void* rnd, void* srf) {
     SDL_Renderer* renderer = (SDL_Renderer*) rnd;
     SDL_Surface* surface = (SDL_Surface*) srf;
